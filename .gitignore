@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Session data (agent conversation history)
+sessions/
+
+# Crash logs
+pi-crash.log
+
+# Authentication & secrets
+auth.json
+
+# Caches
+mcp-cache.json
+
+# Trust configuration
+trust.json
+
+# macOS artifacts
+.DS_Store
+
+# Downloaded packages (npm install cache)
+npm/
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# OS artifacts
+Thumbs.db

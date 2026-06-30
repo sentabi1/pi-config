@@ -1,0 +1,11 @@
+{
+  "lastChangelogVersion": "0.80.2",
+  "theme": "dark",
+  "defaultProvider": "deepseek",
+  "defaultModel": "deepseek-v4-flash",
+  "defaultThinkingLevel": "off",
+  "hideThinkingBlock": true,
+  "packages": [
+    "npm:pi-mcp-adapter"
+  ]
+}
