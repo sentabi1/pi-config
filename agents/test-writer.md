@@ -6,7 +6,7 @@ description: Use to write or extend automated tests for a specific target — a 
   pass/fail. NOT for implementing the feature itself (use worker) or diagnosing why
   existing code fails (use debugger).
 model: deepseek-v4-flash
-thinking: xhigh
+thinking: medium
 color: blue
 fork: true
 ---

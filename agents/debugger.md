@@ -2,7 +2,7 @@
 name: debugger
 description: "Use PROACTIVELY when something is broken — a failing test, an error, a crash, or behavior that doesn't match expectations. Root-causes the problem systematically before fixing. Use for \"why is X failing\", stack traces, and flaky or mysterious bugs. Delegates recon to scout. NOT for routine post-change review (use reviewer) or building new features (use worker)."
 model: deepseek-v4-flash
-thinking: xhigh
+thinking: high
 color: pink
 fork: true
 spawn: [scout, reviewer]

@@ -1,5 +1,9 @@
 when asking about instructions, check /Users/jordan/.pi/agent/extensions first
 
+## Review Conventions
+
+When reviewing changes to the subagents extension (especially UI/render code), see `extensions/subagents/AGENTS.md` for additional information-design review conventions.
+
 
 # Workflow Instructions
 

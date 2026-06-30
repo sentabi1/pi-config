@@ -50,6 +50,17 @@ Deleted over time: `nicknames.ts`, `roster.ts`, `scaffold.ts`, `flash.ts`.
 6. Confirm UX = **two-press border recolor** (first press arms green/red on the panel's existing border, second commits, any other key disarms). NOT a timed flash box (user rejected that + a duration setting).
 7. Hooks: `input` → `{action:"continue"|"transform"|"handled"}`; `before_agent_start` → `{systemPrompt}` replaces the turn's prompt.
 
+## Review conventions (information design)
+
+When reviewing changes to UI / terminal-render code here (`renderResult`, `renderCall`, message renderers, the `setWorkingMessage` line, any `ctx.ui` overlay), add an information-design pass on top of correctness:
+
+- **Redundancy** — the same datum rendered in more than one place (e.g. cost in the header total *and* per-row *and* a child row). Render each fact once, in the most prominent place it belongs.
+- **Consistency** — one concept must use one icon/color/label across all render sites (running/done/error glyphs, the agent color dot, the `subagent` label). Watch for a label printed by both `renderCall` and `renderResult` (that was a real "subagent chain twice" bug).
+- **Truncation / width** — will it fit at ~80 cols; is `truncateToWidth`/`truncLine` applied to anything user-controlled (task text, agent names).
+- **States** — empty (no rows), error, running-vs-done, and collapsed-vs-expanded (`ctrl+o`) are all handled.
+
+These rank as should-fix, below real correctness bugs. (Moved here from the global `reviewer` agent so the global agent stays project-agnostic; `reviewer` defers to this section via its "if the project's AGENTS.md defines review conventions" rule.)
+
 ## User preferences (don't regress)
 
 - No nicknames/aliases/parens. Say **"sequence"**, not "chain". Models here: `deepseek-v4-flash`/`-pro` only.

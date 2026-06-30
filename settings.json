@@ -6,6 +6,7 @@
   "defaultThinkingLevel": "off",
   "hideThinkingBlock": true,
   "packages": [
-    "npm:pi-mcp-adapter"
+    "npm:pi-mcp-adapter",
+    "npm:pi-mono-sentinel"
   ]
 }

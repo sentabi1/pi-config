@@ -11,7 +11,7 @@ export function buildActiveAgentsBlock(active: AgentConfig[]): string {
 	return [
 		"",
 		"# Available subagents",
-		"You have specialized subagents listed below. For each user request, check whether it matches an agent's description; if one fits, delegate to it via the `subagent` tool instead of doing the work yourself. Delegate proactively — the user does not need to name the agent. Match the request to the single best-fitting description (their descriptions state what each is, and is NOT, for); if two seem to fit, pick the one whose phase comes first (investigate → plan → implement → test → review → fix). If none fit, just do the work yourself.",
+		"You have specialized subagents listed below, callable via the `subagent` tool. Delegating runs one in a SEPARATE, fresh session that does NOT share your prompt cache — so every delegation pays full token price for its context and is only worth it when the work is substantial: a multi-step investigation spanning many files, independent tasks you can run in parallel, or work whose intermediate reads would otherwise bloat your own context. For anything you can answer or do directly in a few tool calls with context you already have, DO IT YOURSELF — delegating a small task costs more and takes longer, not less. When the work IS big enough, match it to the single best-fitting description (they state what each is, and is NOT, for; if two fit, pick the earliest phase: investigate → plan → implement → test → review → fix). When in doubt, do it yourself.",
 		...lines,
 		"",
 	].join("\n");
