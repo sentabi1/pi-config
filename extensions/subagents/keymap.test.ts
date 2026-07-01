@@ -47,6 +47,12 @@ test("dataToKeyId rejects unsupported chunks", () => {
 	}
 });
 
+test("dataToKeyId rejects pasted special key labels instead of treating them as gestures", () => {
+	for (const data of ["up", "down", "left", "right", "enter", "escape", "space", "tab"]) {
+		assert.equal(dataToKeyId(data), null, label(data));
+	}
+});
+
 test("dataToKeyId treats newline as enter", () => {
 	assert.equal(dataToKeyId("\n"), "enter");
 });
@@ -117,6 +123,12 @@ test("keyIdMatches special key with wrong data returns false", () => {
 	assert.equal(keyIdMatches("up", "\x1b[B"), false);
 	// "down" matches "\x1b[B", so "\x1b[A" is different key
 	assert.equal(keyIdMatches("down", "\x1b[A"), false);
+});
+
+test("keyIdMatches printable and punctuation bindings match their exact raw input", () => {
+	for (const keyId of ["a", "Z", ",", "?"]) {
+		assert.equal(keyIdMatches(keyId, keyId), true, `${keyId} should match itself`);
+	}
 });
 
 test("keyIdMatches printable matching is case-sensitive", () => {
