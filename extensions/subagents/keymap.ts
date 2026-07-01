@@ -77,7 +77,7 @@ const SPECIAL_KEY: Record<string, any> = {
 };
 
 export function keyIdMatches(keyId: string, data: string): boolean {
-	if (SPECIAL_KEY[keyId]) return matchesKey(data, SPECIAL_KEY[keyId]);
+	if (Object.hasOwn(SPECIAL_KEY, keyId)) return matchesKey(data, SPECIAL_KEY[keyId]);
 	return data === keyId;
 }
 
