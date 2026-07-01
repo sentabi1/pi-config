@@ -158,3 +158,19 @@ test("keyIdMatches each special key does not match another special key's input",
 		assert.equal(keyIdMatches(keyId, otherData), false, `${keyId} should NOT match ${JSON.stringify(otherData)}`);
 	}
 });
+
+test("keyIdMatches special key ids require their raw gesture, not the id text", () => {
+	const ids = ["up", "down", "left", "right", "enter", "escape", "space", "tab"];
+	for (const id of ids) {
+		assert.equal(keyIdMatches(id, id), false, `${id} label text should not trigger special binding`);
+	}
+});
+
+test("dataToKeyId output round-trips through keyIdMatches", () => {
+	const inputs = ["\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C", "\r", "\n", "\x1b", " ", "\t", "a", "Z", ","];
+	for (const data of inputs) {
+		const id = dataToKeyId(data);
+		assert.notEqual(id, null, `${label(data)} should be bindable`);
+		assert.equal(keyIdMatches(id!, data), true, `${id} should match original ${label(data)}`);
+	}
+});
