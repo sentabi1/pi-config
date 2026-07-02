@@ -1,12 +1,15 @@
 {
-  "lastChangelogVersion": "0.80.2",
+  "lastChangelogVersion": "0.80.3",
   "theme": "dark",
   "defaultProvider": "deepseek",
   "defaultModel": "deepseek-v4-flash",
-  "defaultThinkingLevel": "off",
-  "hideThinkingBlock": true,
+  "defaultThinkingLevel": "high",
+  "hideThinkingBlock": false,
   "packages": [
     "npm:pi-mcp-adapter",
     "npm:pi-mono-sentinel"
-  ]
+  ],
+  "compaction": {
+    "enabled": true
+  }
 }

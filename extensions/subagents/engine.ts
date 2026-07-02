@@ -158,7 +158,7 @@ export async function runAgent(args: {
 	parentModel: Model<any> | undefined;
 	registry: ModelRegistry;
 	cwd: string;
-	fork: boolean;
+	conventions: boolean;
 	signal?: AbortSignal;
 	spawn?: SpawnContext;
 	/** Wall-clock cap; the child is aborted past this. Default DEFAULT_RUN_TIMEOUT_MS. */
@@ -207,7 +207,7 @@ export async function runAgent(args: {
 				const idx = seq++;
 				args.spawn?.onChild?.(idx, { agent: child.name, color: child.color, status: "running", cost: 0 });
 				const handle = await runAgent({
-					agent: child, task: params.task, parentModel: model, registry, cwd, fork: child.fork, signal: signal ?? args.signal,
+					agent: child, task: params.task, parentModel: model, registry, cwd, conventions: child.conventions, signal: signal ?? args.signal,
 					spawn: { depth: spawnDepth + 1, resolveAgent, onChild: args.spawn?.onChild },
 					onEvent: () => {},
 				});
@@ -221,7 +221,7 @@ export async function runAgent(args: {
 	// Lean, isolated resource loader. systemPrompt = agent body → child sees only its prompt + task.
 	// fork: true inherits ONLY your AGENTS.md conventions (not CLAUDE.md or the full context
 	// stack) — we keep noContextFiles true and inject the AGENTS.md text via appendSystemPrompt.
-	const conventions = args.fork ? collectAgentsMd(cwd) : [];
+	const conventions = args.conventions ? collectAgentsMd(cwd) : [];
 	const loader = new DefaultResourceLoader({
 		cwd,
 		agentDir: getAgentDir(),

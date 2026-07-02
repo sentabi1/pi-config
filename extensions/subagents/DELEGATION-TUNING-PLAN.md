@@ -1,6 +1,6 @@
 # Delegation tuning plan — when should a subagent actually fire?
 
-Status: design. Captures the full discussion. Nothing implemented yet.
+Status: implemented (phases 0–3 shipped: eval harness, description/guidance rewrites, advertise tiers, model agnosticism, roster-gated backstops) plus follow-ups beyond this plan: the cost feedback loop (`runs.jsonl` + `/agents stats`), scale gates on worker/debugger, and eval hardening (`--fast` tier, timeout flagging, infra-crash retry). Kept as the design rationale; current behavior is documented in README.md/AGENTS.md.
 
 ## The problem
 

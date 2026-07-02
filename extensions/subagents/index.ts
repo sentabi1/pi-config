@@ -10,7 +10,9 @@ import { Keymap } from "./keymap.ts";
 import { RunRegistry } from "./registry.ts";
 import { SubagentState } from "./state.ts";
 import { type DispatchDeps, dispatchSingle, fmtDuration, progressLabel, registerSubagentTool } from "./tool.ts";
+import { aggregateRunStats, appendRunLog, entryFromRecord, formatRunStats, readRunLog } from "./runlog.ts";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { type WritableAgent, writeAgentFile, deleteAgentFile } from "./agent-writer.ts";
 
@@ -30,6 +32,18 @@ export default function (pi: ExtensionAPI) {
 	const armed = new ArmedChain();
 	const holder: { ctx?: ExtensionContext } = {};
 	const registered = new Set<string>();
+	const runLogPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "runs.jsonl");
+
+	// Cost feedback loop: persist every finished run so /agents stats can show
+	// whether each agent's spawns pay for themselves across sessions.
+	registry.onFinish((rec) => appendRunLog(runLogPath, entryFromRecord(rec)));
+
+	// Backstops only make sense when the roster actually has the specialist they
+	// route to — a shared install without svelte-worker must not block .svelte edits.
+	const hasAgent = (ctx: ExtensionContext, name: string): boolean => {
+		const { agents } = discoverAgents(ctx.cwd, { includeProject: ctx.isProjectTrusted?.() ?? false });
+		return agents.some((a) => a.name === name);
+	};
 
 	// Render a dispatched run's result into the transcript (for /<name> and sequences).
 	pi.registerMessageRenderer<OutputDetails>("subagent-output", (msg, _opts, theme) => {
@@ -62,21 +76,46 @@ export default function (pi: ExtensionAPI) {
 		});
 	};
 
+	// /agents stats — the per-agent cost table, monospace-aligned in the transcript.
+	pi.registerMessageRenderer<{ lines: string[] }>("subagent-stats", (msg, _opts, theme) => {
+		const d = msg.details;
+		if (!d) return undefined;
+		const c = new Container();
+		c.addChild(new Text(theme.fg("toolTitle", theme.bold("subagent stats")), 0, 0));
+		d.lines.forEach((line, i) => {
+			const isEdge = i === 0 || i === d.lines.length - 1;
+			c.addChild(new Text(isEdge ? theme.fg("muted", line) : line, 0, 0));
+		});
+		return c;
+	});
+
+	const showStats = (): void => {
+		const lines = formatRunStats(aggregateRunStats(readRunLog(runLogPath)));
+		pi.sendMessage<{ lines: string[] }>({
+			customType: "subagent-stats",
+			content: lines.join("\n"),
+			display: true,
+			details: { lines },
+		});
+	};
+
 	const deps: DispatchDeps = { registry, getCtx: () => holder.ctx as ExtensionContext, showOutput };
 
 	registerSubagentTool(pi, deps);
 
-	pi.on("tool_call", async (event) => {
+	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "edit" && event.toolName !== "write") return;
 		const filePath = toolInputPath(event.input as Record<string, unknown>);
 		if (!isSveltePath(filePath)) return;
+		if (!hasAgent(ctx, "svelte-worker")) return;
 		return { block: true, reason: svelteBackstopReason(filePath) };
 	});
 
-	pi.on("tool_result", async (event) => {
+	pi.on("tool_result", async (event, ctx) => {
 		if (event.toolName !== "bash" || !event.isError) return;
 		const command = String(event.input.command ?? "");
 		if (!isTestOrBuildCommand(command)) return;
+		if (!hasAgent(ctx, "debugger")) return;
 		return { content: appendDebuggerNudge(event.content, command) };
 	});
 
@@ -110,12 +149,16 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("agents", {
-		description: "Open the subagents dashboard. `/agents -k` kills running subagents; `/agents auto [on|off]` toggles proactive auto-delegation.",
+		description: "Open the subagents dashboard. `/agents -k` kills running subagents; `/agents auto [on|off]` toggles proactive auto-delegation; `/agents stats` shows per-agent cost history.",
 		handler: async (args, ctx) => {
 			holder.ctx = ctx;
 			const a = args.trim();
 			if (a.includes("-k")) {
 				killAll(ctx);
+				return;
+			}
+			if (a === "stats") {
+				showStats();
 				return;
 			}
 			// `/agents auto [on|off]` — toggle proactive auto-delegation of all agents.
@@ -126,7 +169,10 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Auto-delegation ${next ? "ON — all agents offered to the model each turn" : "OFF — only toggled-active agents"}.`, "info");
 				return;
 			}
-			await openDashboard(ctx, { state, armed, registry, deps, km });
+			await openDashboard(ctx, {
+				state, armed, registry, deps, km,
+				runStats: () => new Map(aggregateRunStats(readRunLog(runLogPath)).map((s) => [s.agent, s])),
+			});
 			// Pick up any agent created via the wizard so its /<name> command exists immediately.
 			registerAgentCommands(ctx);
 		},
@@ -164,7 +210,7 @@ export default function (pi: ExtensionAPI) {
 					tools: ["read", "grep", "find"],
 					readonly: true,
 					color: "cyan",
-					fork: false,
+					conventions: false,
 					spawn: [],
 					systemPrompt: "You are a test scout. Use read, grep, and find to answer questions about the codebase quickly.",
 				};
@@ -176,7 +222,7 @@ export default function (pi: ExtensionAPI) {
 					tools: ["read", "grep", "find"],
 					readonly: false,
 					color: "purple",
-					fork: false,
+					conventions: false,
 					spawn: [scoutBasic.name],
 					systemPrompt: `You are a spawner test agent. When given a task, delegate to ${scoutBasic.name} via the subagent tool and report its findings.`,
 				};
@@ -265,6 +311,15 @@ ${text || "(no output)"}`);
 		ui.setStatus("subagent-cost", total > 0 ? `⊕ $${total.toFixed(4)} subagents` : undefined);
 	};
 
+	// An armed sequence silently consumes the NEXT typed message — without a visible
+	// indicator that's a trap. Show it in the footer until it fires or is cleared.
+	const updateSequenceStatus = () => {
+		const ui = holder.ctx?.ui;
+		if (!ui?.setStatus) return;
+		const names = armed.get();
+		ui.setStatus("subagent-sequence", names.length ? `⛓ next message runs: ${names.join(" → ")}` : undefined);
+	};
+
 	pi.on("session_start", (_e, ctx) => {
 		holder.ctx = ctx;
 		if (!ctx.hasUI) return;
@@ -273,8 +328,10 @@ ${text || "(no output)"}`);
 		if (!costStatusWired) {
 			costStatusWired = true;
 			registry.onChange(updateCostStatus);
+			armed.onChange(updateSequenceStatus);
 		}
 		updateCostStatus();
+		updateSequenceStatus();
 		registerAgentCommands(ctx);
 	});
 }

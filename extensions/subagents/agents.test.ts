@@ -50,7 +50,7 @@ const serialized = serializeAgent({
 	thinking: "medium",
 	readonly: true,
 	color: "orange",
-	fork: false,
+	conventions: false,
 	spawn: [],
 	systemPrompt: "Prompt",
 });
@@ -65,7 +65,7 @@ const defaultAdvertise = serializeAgent({
 	thinking: "low",
 	readonly: false,
 	color: "cyan",
-	fork: false,
+	conventions: false,
 	spawn: [],
 	systemPrompt: "Prompt",
 });

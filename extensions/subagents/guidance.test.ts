@@ -37,9 +37,10 @@ const block = buildActiveAgentsBlock([
 assert.match(block, /\n# Available subagents\n/);
 assert.match(block, /Capability triggers are hard rules/);
 assert.match(block, /If you can name the file or symbol to inspect, do the lookup yourself/);
-assert.match(block, /Known failure, crash, or non-zero test\/build exit/);
+assert.match(block, /known failure, crash, or non-zero test\/build exit means use the debugging specialist before investigating inline/);
 assert.match(block, /about to declare code done or commit/);
-assert.match(block, /Implementation belongs to the worker specialist/);
+assert.match(block, /make small, nameable edits yourself/);
+assert.match(block, /spans several files or steps/);
 assert.match(block, /fresh, uncached session/);
 assert.match(block, /Judgment options - use only when the breadth\/event tripwire applies:/);
 assert.deepEqual(

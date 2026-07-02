@@ -3,7 +3,7 @@ import { Container, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui
 import { Type } from "typebox";
 import { type AgentConfig, discoverAgents } from "./agents.ts";
 import { colorDot, SPINNER_FRAMES } from "./colors.ts";
-import { emptyUsage, type RunResult, runAgent, type SpawnChildUpdate } from "./engine.ts";
+import { emptyUsage, type RunEvent, type RunResult, runAgent, type SpawnChildUpdate } from "./engine.ts";
 import type { RunRecord, RunRegistry } from "./registry.ts";
 
 export const MAX_PARALLEL = 6;
@@ -34,7 +34,13 @@ function cap(text: string): string {
 	if (Buffer.byteLength(text, "utf8") <= PER_TASK_CAP) return text;
 	let t = text.slice(0, PER_TASK_CAP);
 	while (Buffer.byteLength(t, "utf8") > PER_TASK_CAP) t = t.slice(0, -1);
-	return `${t}\n[truncated]`;
+	return `${t}\n[truncated at ${PER_TASK_CAP / 1024}KB — the agent returned too much; ask it a narrower question]`;
+}
+
+/** Sum a spawn tree's child costs and mirror them onto the registry record, so
+ * the run log and footer total include nested spawns. */
+function sumChildCost(children: Array<SpawnChildUpdate | undefined>): number {
+	return children.reduce((s, ch) => s + (ch?.cost ?? 0), 0);
 }
 
 function fmtTokens(n: number): string {
@@ -64,22 +70,63 @@ export interface DispatchDeps {
 	showOutput?: (agent: string, r: RunResult) => void;
 }
 
-export async function dispatchSingle(deps: DispatchDeps, agent: AgentConfig, task: string, onProgress?: (p: { tools: number; cost: number }) => void): Promise<RunResult> {
+/** Per-child wall-clock cap — a hung child must not block the turn forever.
+ * Override with SUBAGENT_CHILD_TIMEOUT_MS. */
+const CHILD_TIMEOUT_MS = Number(process.env.SUBAGENT_CHILD_TIMEOUT_MS ?? "") || 10 * 60_000;
+
+interface RunChildOpts {
+	mode: "single" | "parallel" | "chain";
+	chainStep?: number;
+	signal?: AbortSignal;
+	resolveAgent?: (name: string) => AgentConfig | undefined;
+	onEvent?: (rec: RunRecord, e: RunEvent) => void;
+	onChild?: (idx: number, update: SpawnChildUpdate) => void;
+}
+
+/** The one place a child agent actually runs. Every dispatch path (tool modes,
+ * /name commands, dashboard sequences) goes through here, so registry records,
+ * spawn child-cost tracking, and the per-child timeout stay consistent. */
+async function runChild(deps: DispatchDeps, agent: AgentConfig, task: string, opts: RunChildOpts): Promise<{ rec: RunRecord; result: RunResult }> {
 	const ctx = deps.getCtx();
-	const rec = deps.registry.create({ agent, task, mode: "single" });
-	const resolveAgent = makeResolveAgent(deps);
+	const rec = deps.registry.create({ agent, task, mode: opts.mode, chainStep: opts.chainStep });
+	const children: Array<SpawnChildUpdate | undefined> = [];
+	const onChild = (i: number, u: SpawnChildUpdate) => {
+		children[i] = u;
+		deps.registry.setChildCost(rec, sumChildCost(children));
+		opts.onChild?.(i, u);
+	};
 	const handle = await runAgent({
-		agent, task, parentModel: ctx.model, registry: ctx.modelRegistry, cwd: ctx.cwd, fork: agent.fork,
-		spawn: agent.spawn.length > 0 ? { depth: 0, resolveAgent } : undefined,
+		agent, task, parentModel: ctx.model, registry: ctx.modelRegistry, cwd: ctx.cwd, conventions: agent.conventions, signal: opts.signal,
+		spawn: agent.spawn.length > 0 ? { depth: 0, resolveAgent: opts.resolveAgent ?? makeResolveAgent(deps), onChild } : undefined,
 		onEvent: (e) => {
 			deps.registry.applyEvent(rec, e);
-			onProgress?.({ tools: rec.usage.toolCalls, cost: rec.usage.cost });
+			opts.onEvent?.(rec, e);
 		},
 	});
 	rec.handle = handle;
-	const r = await handle.promise;
-	deps.registry.finish(rec, r);
-	return r;
+	let timedOut = false;
+	const timer = setTimeout(() => {
+		timedOut = true;
+		handle.abort();
+	}, CHILD_TIMEOUT_MS);
+	(timer as { unref?: () => void }).unref?.();
+	let result: RunResult;
+	try {
+		result = await handle.promise;
+	} finally {
+		clearTimeout(timer);
+	}
+	if (timedOut) result = { ...result, ok: false, error: `timed out after ${Math.round(CHILD_TIMEOUT_MS / 60_000)} min (SUBAGENT_CHILD_TIMEOUT_MS)` };
+	deps.registry.finish(rec, result);
+	return { rec, result };
+}
+
+export async function dispatchSingle(deps: DispatchDeps, agent: AgentConfig, task: string, onProgress?: (p: { tools: number; cost: number }) => void): Promise<RunResult> {
+	const { result } = await runChild(deps, agent, task, {
+		mode: "single",
+		onEvent: (rec) => onProgress?.({ tools: rec.usage.toolCalls, cost: rec.usage.cost }),
+	});
+	return result;
 }
 
 /** Resolve an agent name against the current project's discovered agents (for spawn). */
@@ -99,17 +146,9 @@ export async function dispatchChain(deps: DispatchDeps, steps: Array<{ agent: Ag
 			last = { ok: false, finalText: previous, usage: emptyUsage(), contextPercent: null, error: "aborted" };
 			break;
 		}
-		const ctx = deps.getCtx();
 		const taskText = substitutePrevious(steps[i].task, previous);
-		const rec = deps.registry.create({ agent: steps[i].agent, task: taskText, mode: "chain", chainStep: i + 1 });
-		const handle = await runAgent({
-			agent: steps[i].agent, task: taskText, parentModel: ctx.model, registry: ctx.modelRegistry, cwd: ctx.cwd, fork: steps[i].agent.fork, signal,
-			spawn: steps[i].agent.spawn.length > 0 ? { depth: 0, resolveAgent: makeResolveAgent(deps) } : undefined,
-			onEvent: (e) => deps.registry.applyEvent(rec, e),
-		});
-		rec.handle = handle;
-		last = await handle.promise;
-		deps.registry.finish(rec, last);
+		const { result } = await runChild(deps, steps[i].agent, taskText, { mode: "chain", chainStep: i + 1, signal });
+		last = result;
 		if (!last.ok) break;
 		previous = last.finalText;
 	}
@@ -154,22 +193,21 @@ export function registerSubagentTool(pi: ExtensionAPI, env: DispatchDeps): void 
 	pi.registerTool<typeof Params, ToolDetails>({
 		name: "subagent",
 		label: "Subagent",
+		// Deliberately agent-agnostic (like guidance.ts): the routing intelligence lives in
+		// the advertised "# Available subagents" block, rebuilt from disk every turn. Naming
+		// agents here would go stale on rename/delete and fight the advertise tiers.
 		description: [
 			"Delegate work to specialized subagents that run with their own isolated context and return only a summary.",
+			"The available agents, and the routing rules for when to delegate versus work inline, are listed in the system prompt under '# Available subagents'.",
 			"Modes: single { agent, task }; parallel { tasks:[…] }; sequence { chain:[…] } (sequential, {previous} passes the prior step's output forward).",
 			"Add retry to a sequence: { chain: [...], retry: { maxRetries: N, retrySteps: [...] } } loops retrySteps until the last step succeeds, up to N attempts.",
-			"Delegate read-only investigation to scout, planning to planner, post-change review to reviewer, implementation to worker.",
 		].join(" "),
-		promptSnippet: "Delegate recon/planning/review/implementation to subagents (single, parallel, or sequence) with isolated context. Retry sequences with { retry: { maxRetries, retrySteps } }.",
+		promptSnippet: "Delegate focused tasks to the subagents advertised in the system prompt (single, parallel, or sequence) with isolated context. Retry sequences with { retry: { maxRetries, retrySteps } }.",
 		promptGuidelines: [
-			"Use subagent('scout', …) proactively for codebase questions instead of reading many files yourself.",
-			"Use subagent('worker', …) for well-scoped implementation work; reviewer reports findings but does not write code.",
-			"Use subagent('svelte-worker', …) for any .svelte/.svelte.ts/.svelte.js edit, even a tiny one.",
-			"Use subagent('debugger', …) for a known failure, crash, stack trace, or non-zero test/build exit.",
-			"After code changes, use subagent('reviewer', …) to review the diff.",
+			"Choose agents by the descriptions and routing tiers advertised under '# Available subagents'; those rules decide when delegation pays off versus working inline.",
 			"Use sequence mode + {previous} for multi-stage work; parallel mode for independent investigations.",
-			"Add retry to a sequence: subagent({ chain: [reviewer-step, worker-fix-step], retry: { maxRetries: 2, retrySteps: [reviewer, worker] } }) to loop until clean.",
-			"Subagents return only their final summary; their intermediate tool output is intentionally hidden.",
+			"Add retry to a sequence: { chain: [review-step, fix-step], retry: { maxRetries: 2, retrySteps: [...] } } to loop until clean.",
+			"Subagents return only their final summary; their intermediate tool output is intentionally hidden. Ask for concise findings with file:line evidence, not code dumps.",
 		],
 		parameters: Params,
 		renderShell: "self",
@@ -200,17 +238,14 @@ export function registerSubagentTool(pi: ExtensionAPI, env: DispatchDeps): void 
 			const runRow = async (agent: AgentConfig, task: string, idx: number, chainStep?: number): Promise<RunResult> => {
 				const startedAt = Date.now();
 				rows[idx] = { color: agent.color, agent: agent.name, task, status: "running", elapsedMs: 0, startedAt, preview: "", usage: { input: 0, output: 0, cost: 0, turns: 0, tools: 0, ctx: null } };
-				const rec = env.registry.create({ agent, task, mode, chainStep });
-				const onChild = (cidx: number, update: SpawnChildUpdate) => {
-					const children = (rows[idx].children ??= []);
-					children[cidx] = update;
-					emit();
-				};
-				const handle = await runAgent({
-					agent, task, parentModel: ctx.model, registry: ctx.modelRegistry, cwd: ctx.cwd, fork: agent.fork, signal,
-					spawn: agent.spawn.length > 0 ? { depth: 0, resolveAgent: byName, onChild } : undefined,
-					onEvent: (e) => {
-						env.registry.applyEvent(rec, e);
+				const { result: r } = await runChild(env, agent, task, {
+					mode, chainStep, signal, resolveAgent: byName,
+					onChild: (cidx, update) => {
+						const children = (rows[idx].children ??= []);
+						children[cidx] = update;
+						emit();
+					},
+					onEvent: (rec, e) => {
 						const u = rec.usage;
 						rows[idx].usage = { input: u.input, output: u.output, cost: u.cost, turns: u.turns, tools: u.toolCalls, ctx: rec.contextPercent };
 						rows[idx].elapsedMs = Date.now() - startedAt;
@@ -218,9 +253,6 @@ export function registerSubagentTool(pi: ExtensionAPI, env: DispatchDeps): void 
 						emit();
 					},
 				});
-				rec.handle = handle;
-				const r = await handle.promise;
-				env.registry.finish(rec, r);
 				const u = r.usage;
 				rows[idx] = { color: agent.color, agent: agent.name, task, status: r.ok ? "done" : "error", elapsedMs: Date.now() - startedAt, startedAt, preview: (r.finalText.split("\n").find((l) => l.trim()) ?? "").slice(0, 80), usage: { input: u.input, output: u.output, cost: u.cost, turns: u.turns, tools: u.toolCalls, ctx: r.contextPercent }, children: rows[idx].children };
 				emit();
@@ -325,8 +357,16 @@ export function registerSubagentTool(pi: ExtensionAPI, env: DispatchDeps): void 
 				const icon = r.status === "running" ? theme.fg("warning", spinnerFrame) : r.status === "done" ? theme.fg("success", "✓") : theme.fg("error", "✗");
 				const stats = `${theme.fg("dim", fmtDuration(r.elapsedMs))} ${theme.fg("muted", `${r.usage.tools}⚒`)} ${theme.fg("dim", `↑${fmtTokens(r.usage.input)} ↓${fmtTokens(r.usage.output)} $${r.usage.cost.toFixed(4)}`)}${r.usage.ctx != null ? theme.fg("dim", ` ${Math.round(r.usage.ctx)}%`) : ""}`;
 				c.addChild(new Text(`${icon} ${colorDot(r.color)} ${theme.fg("accent", r.agent)} ${stats}`, 0, 0));
-				// Echo the task so you can see what each agent was asked.
-				if (r.task) c.addChild(new Text(`   ${theme.fg("muted", truncateToWidth(`▸ ${r.task.replace(/\n/g, " ")}`, 90))}`, 0, 0));
+				// Echo the task so you can see what each agent was asked. While the agent is
+				// running (or the block is expanded) show the full directions, word-wrapped —
+				// that's the only window into what it was told; truncate only once it's done.
+				if (r.task) {
+					if (r.status === "running" || options.expanded) {
+						c.addChild(new Text(theme.fg("muted", `▸ ${r.task}`), 3, 0));
+					} else {
+						c.addChild(new Text(`   ${theme.fg("muted", truncateToWidth(`▸ ${r.task.replace(/\n/g, " ")}`, 90))}`, 0, 0));
+					}
+				}
 				if (r.preview) c.addChild(new Text(`   ${theme.fg("dim", truncateToWidth(r.preview, 90))}`, 0, 0));
 				// Spawn tree: nested runs this agent delegated to, indented under it.
 				for (const ch of r.children ?? []) {

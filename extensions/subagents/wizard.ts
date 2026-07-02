@@ -105,7 +105,7 @@ function runWizardOverlay(ctx: ExtensionContext): Promise<Answers | null> {
 					const handle = await runAgent({
 						agent: {
 							name: "drafter", description: "drafter", model: "deepseek-v4-pro", thinking: "high",
-							tools: undefined, readonly: true, color: "purple", fork: false, spawn: [],
+							tools: undefined, readonly: true, color: "purple", conventions: false, spawn: [],
 							systemPrompt: "You draft a single piece of text exactly as instructed. Output ONLY the requested text — no preamble, no fences.",
 							source: "user", filePath: "",
 						},
@@ -113,7 +113,7 @@ function runWizardOverlay(ctx: ExtensionContext): Promise<Answers | null> {
 						parentModel: ctx.model,
 						registry: ctx.modelRegistry,
 						cwd: ctx.cwd,
-						fork: false,
+						conventions: false,
 						signal: aiAbort!.signal,
 						onEvent: () => {},
 					});
@@ -221,7 +221,7 @@ export async function newAgentWizard(ctx: ExtensionContext): Promise<void> {
 			description: answers.description.trim() || answers.name.trim(),
 			color,
 			readonly: false,
-			fork: false,
+			conventions: false,
 			spawn: [],
 			systemPrompt: answers.systemPrompt.trim(),
 			tools: undefined,

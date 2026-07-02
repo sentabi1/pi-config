@@ -15,12 +15,15 @@ export interface RunRecord {
 	endedAt?: number;
 	mode: "single" | "parallel" | "chain";
 	chainStep?: number;
+	/** Summed cost of nested runs this agent spawned (its `spawn:` children). */
+	childCost: number;
 	handle?: RunHandle;
 }
 
 export class RunRegistry {
 	private records: RunRecord[] = [];
 	private listeners = new Set<() => void>();
+	private finishListeners = new Set<(rec: RunRecord) => void>();
 	private nextId = 1;
 
 	create(opts: { agent: AgentConfig; task: string; mode: "single" | "parallel" | "chain"; chainStep?: number }): RunRecord {
@@ -36,6 +39,7 @@ export class RunRegistry {
 			startedAt: Date.now(),
 			mode: opts.mode,
 			chainStep: opts.chainStep,
+			childCost: 0,
 		};
 		this.records.push(rec);
 		this.notify();
@@ -67,6 +71,13 @@ export class RunRegistry {
 		rec.contextPercent = result.contextPercent;
 		rec.endedAt = Date.now();
 		rec.handle = undefined;
+		for (const cb of this.finishListeners) cb(rec);
+		this.notify();
+	}
+
+	/** Update the summed cost of a run's nested spawn children. */
+	setChildCost(rec: RunRecord, cost: number): void {
+		rec.childCost = cost;
 		this.notify();
 	}
 
@@ -93,15 +104,20 @@ export class RunRegistry {
 		return this.running().length > 0;
 	}
 
-	/** Cumulative cost of every subagent run this session (top-level dispatched/tool runs;
-	 * nested spawns are summed inside the tool result, not here). */
+	/** Cumulative cost of every subagent run this session, including nested spawn children. */
 	totalCost(): number {
-		return this.records.reduce((sum, r) => sum + (r.usage?.cost ?? 0), 0);
+		return this.records.reduce((sum, r) => sum + (r.usage?.cost ?? 0) + (r.childCost ?? 0), 0);
 	}
 
 	onChange(cb: () => void): () => void {
 		this.listeners.add(cb);
 		return () => this.listeners.delete(cb);
+	}
+
+	/** Called once per run when it finishes (done/error/aborted), with final usage applied. */
+	onFinish(cb: (rec: RunRecord) => void): () => void {
+		this.finishListeners.add(cb);
+		return () => this.finishListeners.delete(cb);
 	}
 
 	/** Force a render/notify (e.g. after toggling widget collapse state). */

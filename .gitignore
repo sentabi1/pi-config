@@ -31,3 +31,9 @@ npm/
 
 # OS artifacts
 Thumbs.db
+
+# Subagents extension — per-machine state and eval outputs
+extensions/subagents/state.json
+extensions/subagents/runs.jsonl
+extensions/subagents/routing-eval-*.json
+!extensions/subagents/routing-eval-baseline.json

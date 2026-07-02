@@ -18,7 +18,7 @@ const agent = (overrides: Partial<AgentConfig>): AgentConfig =>
 		description: "desc",
 		readonly: false,
 		color: "cyan",
-		fork: false,
+		conventions: false,
 		spawn: [],
 		systemPrompt: "",
 		source: "user",

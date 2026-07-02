@@ -12,7 +12,7 @@ function yamlString(v: string): string {
 
 export type WritableAgent = Pick<
 	AgentConfig,
-	"name" | "description" | "model" | "tier" | "thinking" | "tools" | "readonly" | "color" | "fork" | "spawn" | "systemPrompt"
+	"name" | "description" | "model" | "tier" | "thinking" | "tools" | "readonly" | "color" | "conventions" | "spawn" | "systemPrompt"
 > &
 	Partial<Pick<AgentConfig, "advertise">>;
 
@@ -27,7 +27,7 @@ export function serializeAgent(a: WritableAgent): string {
 	if (a.tools && a.tools.length > 0) lines.push(`tools: [${a.tools.map(yamlString).join(", ")}]`);
 	if (a.readonly) lines.push("readonly: true");
 	lines.push(`color: ${yamlString(a.color)}`);
-	if (a.fork) lines.push("fork: true");
+	if (a.conventions) lines.push("conventions: true");
 	if (a.spawn && a.spawn.length > 0) lines.push(`spawn: [${a.spawn.map(yamlString).join(", ")}]`);
 	lines.push("---", "", a.systemPrompt.trim(), "");
 	return lines.join("\n");

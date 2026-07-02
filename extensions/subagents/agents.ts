@@ -26,7 +26,8 @@ export interface AgentConfig {
 	tools?: string[];
 	readonly: boolean;
 	color: string;
-	fork: boolean;
+	/** Inherit the project's AGENTS.md conventions (and only those) into the child. */
+	conventions: boolean;
 	spawn: string[];
 	systemPrompt: string;
 	source: "user" | "project";
@@ -48,6 +49,8 @@ interface RawFrontmatter {
 	tools?: string[] | string;
 	readonly?: boolean | string;
 	color?: string;
+	conventions?: boolean | string;
+	/** Legacy alias for `conventions`. */
 	fork?: boolean | string;
 	spawn?: string[] | string;
 }
@@ -104,7 +107,7 @@ export function parseAgentFile(
 		tools: tools.length > 0 ? tools : undefined,
 		readonly: asBool(frontmatter.readonly),
 		color: frontmatter.color?.trim() || FALLBACK_COLORS[nameHash % FALLBACK_COLORS.length],
-		fork: asBool(frontmatter.fork),
+		conventions: asBool(frontmatter.conventions ?? frontmatter.fork),
 		spawn: asList(frontmatter.spawn),
 		systemPrompt: body.trim(),
 		source,

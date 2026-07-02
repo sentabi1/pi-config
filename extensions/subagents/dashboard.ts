@@ -14,6 +14,7 @@ import type { ArmedChain } from "./chain-arm.ts";
 import type { RunRegistry } from "./registry.ts";
 import type { AgentGroup, SubagentState } from "./state.ts";
 import type { DispatchDeps } from "./tool.ts";
+import type { AgentRunStats } from "./runlog.ts";
 
 const CIRCLED = "①②③④⑤⑥⑦⑧⑨";
 const UNGROUPED = -1;
@@ -49,6 +50,8 @@ export interface DashboardEnv {
 	registry: RunRegistry;
 	deps: DispatchDeps;
 	km: Keymap;
+	/** All-sessions run history per agent (from runs.jsonl), for the per-row cost suffix. */
+	runStats?: () => Map<string, AgentRunStats>;
 }
 
 interface DashResult {
@@ -61,6 +64,7 @@ function showDashboard(ctx: ExtensionContext, env: DashboardEnv, agents: AgentCo
 	const { km } = env;
 	return ctx.ui.custom<DashResult>((tui: any, theme: any, _kb: any, done: (r: DashResult) => void) => {
 		const byName = new Map(agents.map((a) => [a.name, a]));
+		const runStats = env.runStats?.() ?? new Map<string, AgentRunStats>();
 		const groups = typeof (env.state as any).getGroups === "function" ? env.state.getGroups() : [];
 		const chain = [...chain0].filter((n) => byName.has(n));
 		const localActive = new Set(active0.filter((n) => byName.has(n)));
@@ -190,7 +194,13 @@ function showDashboard(ctx: ExtensionContext, env: DashboardEnv, agents: AgentCo
 			add(theme.fg(bc, "─".repeat(width)));
 			if (confirm === "save") add(theme.fg("success", theme.bold(" ✓ Saved!")) + theme.fg("dim", `   ${km.label("confirm")} again to confirm · any key to stay`));
 			else if (confirm === "cancel") add(theme.fg("error", theme.bold(" ✗ Canceled!")) + theme.fg("dim", `   ${km.label("cancel")} again to discard changes · any key to stay`));
-			else add(theme.fg("text", " AGENTS"));
+			else {
+				const auto = env.state.getAdvertiseAll();
+				add(
+					theme.fg("text", " AGENTS") +
+						theme.fg("dim", auto ? "   auto-delegation ON — every agent is advertised; [x] toggles apply when auto is off" : "   auto-delegation OFF — only hard triggers and [x]-active agents are advertised"),
+				);
+			}
 			// grouped hints
 			const H: Array<[string, string]> = [
 				[`${km.label("up")}${km.label("down")}`, "move"],
@@ -228,7 +238,14 @@ function showDashboard(ctx: ExtensionContext, env: DashboardEnv, agents: AgentCo
 					const tools = a.readonly ? theme.fg("muted", "read-only") : theme.fg("muted", a.tools?.join(",") ?? "default");
 					const nm = foc ? theme.fg("accent", a.name) : theme.fg("text", a.name);
 					const model = a.model ?? (a.tier ? `tier:${a.tier}` : "inherit");
-					add(`${mark}  ${toggle} ${colorDot(a.color)} ${nm}  ${theme.fg("dim", model)}  ${theme.fg("dim", a.advertise)}  ${tools}  ${numTag}`);
+					// Effective routing state, not just the frontmatter tier: with auto off,
+					// a judgment/never agent that isn't toggled active is not advertised at all.
+					const advertised = env.state.getAdvertiseAll() || a.advertise === "always" || on;
+					const routing = advertised ? theme.fg("dim", a.advertise) : theme.fg("warning", "not advertised");
+					// All-sessions cost history — the tuning signal, shown where activation decisions happen.
+					const st = runStats.get(a.name);
+					const hist = st ? `  ${theme.fg("dim", `${st.runs}r $${st.totalCost.toFixed(2)}`)}` : "";
+					add(`${mark}  ${toggle} ${colorDot(a.color)} ${nm}  ${theme.fg("dim", model)}  ${routing}  ${tools}${hist}  ${numTag}`);
 					if (foc) for (const w of wrapTextWithAnsi(theme.fg("muted", a.description), Math.max(1, width - 8))) add(`        ${w}`);
 				}
 			}
