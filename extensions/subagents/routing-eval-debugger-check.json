@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-06-30T23:59:17.524Z",
+  "command": "pi -p -e index.ts --no-extensions --no-session <prompt>",
+  "results": [
+    {
+      "id": "known-failure-debugger",
+      "pass": true,
+      "missing": [],
+      "forbidden": [],
+      "spawned": [
+        "debugger"
+      ],
+      "exitCode": 143,
+      "durationMs": 180036,
+      "notes": "Discipline event: known failing symptom belongs to debugger, not reviewer."
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0
+  }
+}

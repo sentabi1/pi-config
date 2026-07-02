@@ -121,7 +121,7 @@ export async function dispatchChain(deps: DispatchDeps, steps: Array<{ agent: Ag
 const TaskItem = Type.Object({ agent: Type.String({ description: "Agent name" }), task: Type.String({ description: "Task for the agent" }) });
 const ChainItem = Type.Object({ agent: Type.String({ description: "Agent name" }), task: Type.String({ description: "Task; may include {previous}" }) });
 const RetryConfig = Type.Object({
-	maxRetries: Type.Number({ description: "Max retry attempts when a step fails (chain only). " }),
+	maxRetries: Type.Number({ description: "Max retry attempts when a step fails (sequence only)." }),
 	retrySteps: Type.Array(ChainItem, { description: "Steps to retry, typically [reviewer-step, fix-step]" }),
 });
 
@@ -129,8 +129,8 @@ const Params = Type.Object({
 	agent: Type.Optional(Type.String({ description: "Single mode: agent name" })),
 	task: Type.Optional(Type.String({ description: "Single mode: the task" })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Parallel mode" })),
-	chain: Type.Optional(Type.Array(ChainItem, { description: "Chain mode; {previous} flows" })),
-	retry: Type.Optional(RetryConfig, { description: "Optional retry loop at the end of the chain. If set, the retrySteps run up to maxRetries times until the last step succeeds." }),
+	chain: Type.Optional(Type.Array(ChainItem, { description: "Sequence mode; {previous} flows" })),
+	retry: Type.Optional(RetryConfig, { description: "Optional retry loop at the end of the sequence. If set, the retrySteps run up to maxRetries times until the last step succeeds." }),
 });
 
 interface LiveRow {
@@ -156,16 +156,19 @@ export function registerSubagentTool(pi: ExtensionAPI, env: DispatchDeps): void 
 		label: "Subagent",
 		description: [
 			"Delegate work to specialized subagents that run with their own isolated context and return only a summary.",
-			"Modes: single { agent, task }; parallel { tasks:[…] }; chain { chain:[…] } (sequential, {previous} passes the prior step's output forward).",
-			"Add retry to a chain: { chain: [...], retry: { maxRetries: N, retrySteps: [...] } } loops retrySteps until the last step succeeds, up to N attempts.",
+			"Modes: single { agent, task }; parallel { tasks:[…] }; sequence { chain:[…] } (sequential, {previous} passes the prior step's output forward).",
+			"Add retry to a sequence: { chain: [...], retry: { maxRetries: N, retrySteps: [...] } } loops retrySteps until the last step succeeds, up to N attempts.",
 			"Delegate read-only investigation to scout, planning to planner, post-change review to reviewer, implementation to worker.",
 		].join(" "),
-		promptSnippet: "Delegate recon/planning/review/implementation to subagents (single, parallel, or chain) with isolated context. Retry chains with { retry: { maxRetries, retrySteps } }.",
+		promptSnippet: "Delegate recon/planning/review/implementation to subagents (single, parallel, or sequence) with isolated context. Retry sequences with { retry: { maxRetries, retrySteps } }.",
 		promptGuidelines: [
 			"Use subagent('scout', …) proactively for codebase questions instead of reading many files yourself.",
+			"Use subagent('worker', …) for well-scoped implementation work; reviewer reports findings but does not write code.",
+			"Use subagent('svelte-worker', …) for any .svelte/.svelte.ts/.svelte.js edit, even a tiny one.",
+			"Use subagent('debugger', …) for a known failure, crash, stack trace, or non-zero test/build exit.",
 			"After code changes, use subagent('reviewer', …) to review the diff.",
-			"Use chain mode + {previous} for multi-stage work; parallel mode for independent investigations.",
-			"Add retry to a chain: subagent({ chain: [reviewer-step, worker-fix-step], retry: { maxRetries: 2, retrySteps: [reviewer, worker] } }) to loop until clean.",
+			"Use sequence mode + {previous} for multi-stage work; parallel mode for independent investigations.",
+			"Add retry to a sequence: subagent({ chain: [reviewer-step, worker-fix-step], retry: { maxRetries: 2, retrySteps: [reviewer, worker] } }) to loop until clean.",
 			"Subagents return only their final summary; their intermediate tool output is intentionally hidden.",
 		],
 		parameters: Params,
@@ -177,7 +180,7 @@ export function registerSubagentTool(pi: ExtensionAPI, env: DispatchDeps): void 
 			const modes = [Boolean(params.agent && params.task), (params.tasks?.length ?? 0) > 0, (params.chain?.length ?? 0) > 0].filter(Boolean).length;
 			if (modes !== 1) {
 				const list = agents.map((a) => a.name).join(", ") || "none";
-				return { content: [{ type: "text", text: `Provide exactly one of {agent,task} | {tasks} | {chain}. Available: ${list}` }], details: { mode: "single", rows: [] } };
+				return { content: [{ type: "text", text: `Provide exactly one of single {agent,task}, parallel {tasks}, or sequence {chain}. Available: ${list}` }], details: { mode: "single", rows: [] } };
 			}
 			const mode: ToolDetails["mode"] = params.chain ? "chain" : params.tasks ? "parallel" : "single";
 			const rows: LiveRow[] = [];
@@ -246,14 +249,14 @@ export function registerSubagentTool(pi: ExtensionAPI, env: DispatchDeps): void 
 				const unknown = params.chain.find((s) => !byName(s.agent));
 				if (unknown) return { content: [{ type: "text", text: `Unknown agent "${unknown.agent}".` }], details: { mode, rows: [] }, isError: true };
 				if (params.retry) {
-					const runknown = params.retry.retrySteps.find((s) => !byName(s.agent));
-					if (runknown) return { content: [{ type: "text", text: `Unknown agent in retrySteps "${runknown.agent}".` }], details: { mode, rows: [] }, isError: true };
+						const unknownRetry = params.retry.retrySteps.find((s) => !byName(s.agent));
+						if (unknownRetry) return { content: [{ type: "text", text: `Unknown agent in retrySteps "${unknownRetry.agent}".` }], details: { mode, rows: [] }, isError: true };
 				}
 				let previous = "";
 				for (let i = 0; i < params.chain.length; i++) {
 					const step = params.chain[i];
 					const r = await runRow(byName(step.agent)!, substitutePrevious(step.task, previous), i, i + 1);
-					if (!r.ok) return { content: [{ type: "text", text: `Chain stopped at step ${i + 1} (${step.agent}): ${r.error ?? r.finalText}` }], details: { mode, rows }, isError: true };
+						if (!r.ok) return { content: [{ type: "text", text: `Sequence stopped at step ${i + 1} (${step.agent}): ${r.error ?? r.finalText}` }], details: { mode, rows }, isError: true };
 					previous = r.finalText;
 				}
 				// Retry loop: if retry config is set, run retrySteps up to maxRetries times until the last step succeeds.
@@ -294,7 +297,7 @@ export function registerSubagentTool(pi: ExtensionAPI, env: DispatchDeps): void 
 			if (args.chain) {
 				const names = args.chain.map((s) => s.agent).join(" → ");
 				const retry = args.retry ? ` ↻×${args.retry.maxRetries}` : "";
-				return new Text(`${head} ${theme.fg("accent", `chain: ${names}`)}${theme.fg("warning", retry)}`, 0, 0);
+					return new Text(`${head} ${theme.fg("accent", `sequence: ${names}`)}${theme.fg("warning", retry)}`, 0, 0);
 			}
 			if (args.tasks) {
 				const names = args.tasks.map((t) => t.agent).join(", ");

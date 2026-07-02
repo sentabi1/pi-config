@@ -20,6 +20,8 @@ export interface AgentConfig {
 	name: string;
 	description: string;
 	model?: string;
+	tier?: "fast" | "strong";
+	advertise: "always" | "judgment" | "never";
 	thinking?: string;
 	tools?: string[];
 	readonly: boolean;
@@ -40,6 +42,8 @@ interface RawFrontmatter {
 	name?: string;
 	description?: string;
 	model?: string;
+	tier?: string;
+	advertise?: string;
 	thinking?: string;
 	tools?: string[] | string;
 	readonly?: boolean | string;
@@ -66,6 +70,16 @@ function asList(v: string[] | string | undefined): string[] {
 
 const FALLBACK_COLORS = ["cyan", "purple", "green", "orange", "blue", "pink", "yellow", "magenta"];
 
+function asTier(v: string | undefined): "fast" | "strong" | undefined {
+	const s = v?.trim();
+	return s === "fast" || s === "strong" ? s : undefined;
+}
+
+function asAdvertise(v: string | undefined): "always" | "judgment" | "never" {
+	const s = v?.trim();
+	return s === "always" || s === "judgment" || s === "never" ? s : "judgment";
+}
+
 export function parseAgentFile(
 	content: string,
 	filePath: string,
@@ -84,6 +98,8 @@ export function parseAgentFile(
 		name: frontmatter.name.trim(),
 		description: frontmatter.description.trim(),
 		model: frontmatter.model?.trim() || undefined,
+		tier: asTier(frontmatter.tier),
+		advertise: asAdvertise(frontmatter.advertise),
 		thinking: frontmatter.thinking?.trim() || undefined,
 		tools: tools.length > 0 ? tools : undefined,
 		readonly: asBool(frontmatter.readonly),

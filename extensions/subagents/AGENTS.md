@@ -27,7 +27,7 @@ A personal `pi` extension: delegate tasks to **in-process child `AgentSession`s*
 - `state.ts` — persists `{ active[], groups[], keybinds{} }` to `state.json`. Methods for toggles, groups (add/delete/rename/setMembers), `renameAgentReferences`, keybind get/set/reset.
 - `keymap.ts` — `Action` union, `DEFAULT_KEYS`, `Keymap` (reads overrides from state, `matches/label/rebind`), `dataToKeyId`/`keyIdMatches`.
 - `registry.ts` — `RunRegistry`/`RunRecord`: live runs, `running()/recent()/elapsedMs()/stop()`, `onChange`. (No nicknames, no background field — both removed.)
-- `tool.ts` — the `subagent` tool (single/parallel/chain). **Streams live usage/cost/context into its `renderResult` via `onUpdate`** (see gotcha #2). Also exports the shared `dispatchSingle/dispatchChain` + `DispatchDeps { registry, getCtx, notify?, showOutput? }` used by dashboard/sequence/commands.
+- `tool.ts` — the `subagent` tool (single/parallel/sequence; API field remains `chain`). **Streams live usage/cost/context into its `renderResult` via `onUpdate`** (see gotcha #2). Also exports the shared `dispatchSingle/dispatchChain` + `DispatchDeps { registry, getCtx, notify?, showOutput? }` used by dashboard/sequence/commands.
 - `chain-arm.ts` — `ArmedChain` + `routeArmedChain` (the `input`-handler logic that consumes the next typed message into the sequence, non-blocking).
 - `guidance.ts` — `buildActiveAgentsBlock` (injected via `before_agent_start` for auto-spawn).
 - `widget.ts` — below-editor status line, **running-only**, stable output + change-detected repaint, `fmtElapsed`.
@@ -55,7 +55,7 @@ Deleted over time: `nicknames.ts`, `roster.ts`, `scaffold.ts`, `flash.ts`.
 When reviewing changes to UI / terminal-render code here (`renderResult`, `renderCall`, message renderers, the `setWorkingMessage` line, any `ctx.ui` overlay), add an information-design pass on top of correctness:
 
 - **Redundancy** — the same datum rendered in more than one place (e.g. cost in the header total *and* per-row *and* a child row). Render each fact once, in the most prominent place it belongs.
-- **Consistency** — one concept must use one icon/color/label across all render sites (running/done/error glyphs, the agent color dot, the `subagent` label). Watch for a label printed by both `renderCall` and `renderResult` (that was a real "subagent chain twice" bug).
+- **Consistency** — one concept must use one icon/color/label across all render sites (running/done/error glyphs, the agent color dot, the `subagent` label). Watch for a label printed by both `renderCall` and `renderResult` (that was a real duplicated subagent label bug).
 - **Truncation / width** — will it fit at ~80 cols; is `truncateToWidth`/`truncLine` applied to anything user-controlled (task text, agent names).
 - **States** — empty (no rows), error, running-vs-done, and collapsed-vs-expanded (`ctrl+o`) are all handled.
 
@@ -70,6 +70,22 @@ These rank as should-fix, below real correctness bugs. (Moved here from the glob
 - New-agent wizard wording: "Create a new subagent", running `Name:/Description:/System Prompt:` summary, `Tab` "Want a suggestion?" → "Thinking super duper hard…".
 - Stable widgets > eye candy; scroll must keep working.
 
+## Routing policy
+
+Agent frontmatter is the source of truth for auto-delegation shape:
+
+- `advertise: always` = hard trigger. Show every turn and route whenever its signal is present.
+- `advertise: judgment` = soft trigger. Show every turn, but use only when the breadth/event tripwire applies.
+- `advertise: never` = explicit-only. Show as an available specialist, but do not use proactively unless the user asked for that artifact/workflow.
+- Omit `model:` by default so the child inherits the parent session model. Use `thinking:` for reasoning effort. Use `tier: fast|strong` only when the agent needs a capability tier instead of a concrete provider model; `SUBAGENT_MODEL_TIER_FAST` and `SUBAGENT_MODEL_TIER_STRONG` map tiers to model patterns.
+- `fork: true` belongs on doers that need project conventions (`worker`, `debugger`, `test-writer`, `svelte-worker`). Read-only recon/review/planning usually skip fork to stay lean unless they specifically need inherited conventions.
+
+Routing precedence when layers conflict: agent frontmatter policy, then the agent `description`, then `guidance.ts`, then the agent body, then general AGENTS.md notes. New descriptions should follow this template: trigger signal -> scale gate -> NOT-for boundaries -> return format.
+
+Trust boundary: recon/review results may be used as references, but edits from worker/debugger/svelte-worker must be verified by the parent before declaring done. Nested spawning compounds cost; child agents should not spawn again for small work.
+
+Mechanical backstops: the top-level extension blocks direct `edit`/`write` calls to `.svelte`, `.svelte.ts`, and `.svelte.js` files and nudges failed test/build bash results toward `debugger`. Child `AgentSession`s run with `noExtensions: true`, so child Svelte routing is enforced by agent instructions/spawn policy rather than the top-level hook.
+
 ## Status
 
 Working & verified: in-process engine, isolation, single/parallel/sequence, auto-spawn, grouped dashboard (toggle/sequence/edit/open/new/newGroup/delete), Agent Editor (incl. rename), wizard w/ AI assist, keymap + settings, live usage/cost in tool result, `/<name>` output, `/agents -k`, persistence, `/reload`.
@@ -78,4 +94,4 @@ Spawn is wired: an agent's `spawn:` list injects a scoped `subagent` custom tool
 
 Deferred: full keymap propagation into the sub-overlays (editor/wizard/pickers still use default keys directly — only dashboard + settings are remappable); per-child run **timeout** (a hung child still blocks; the `_spawntest` smoke run exposed this); editing `spawn:` from the Agent Editor (edit the `.md` directly for now); steering/intercom not surfaced.
 
-Plan/spec docs: `PLAN.md`, `PLAN-v2.md`. Reference repo: https://github.com/amosblomqvist/pi-subagents.
+Plan/spec docs: `DELEGATION-TUNING-PLAN.md`. Reference repo: https://github.com/amosblomqvist/pi-subagents.

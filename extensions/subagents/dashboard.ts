@@ -61,7 +61,7 @@ function showDashboard(ctx: ExtensionContext, env: DashboardEnv, agents: AgentCo
 	const { km } = env;
 	return ctx.ui.custom<DashResult>((tui: any, theme: any, _kb: any, done: (r: DashResult) => void) => {
 		const byName = new Map(agents.map((a) => [a.name, a]));
-		const groups = env.state.getGroups();
+		const groups = typeof (env.state as any).getGroups === "function" ? env.state.getGroups() : [];
 		const chain = [...chain0].filter((n) => byName.has(n));
 		const localActive = new Set(active0.filter((n) => byName.has(n)));
 
@@ -227,7 +227,8 @@ function showDashboard(ctx: ExtensionContext, env: DashboardEnv, agents: AgentCo
 					const toggle = on ? theme.fg("success", "[x]") : theme.fg("dim", "[ ]");
 					const tools = a.readonly ? theme.fg("muted", "read-only") : theme.fg("muted", a.tools?.join(",") ?? "default");
 					const nm = foc ? theme.fg("accent", a.name) : theme.fg("text", a.name);
-					add(`${mark}  ${toggle} ${colorDot(a.color)} ${nm}  ${theme.fg("dim", a.model ?? "inherit")}  ${tools}  ${numTag}`);
+					const model = a.model ?? (a.tier ? `tier:${a.tier}` : "inherit");
+					add(`${mark}  ${toggle} ${colorDot(a.color)} ${nm}  ${theme.fg("dim", model)}  ${theme.fg("dim", a.advertise)}  ${tools}  ${numTag}`);
 					if (foc) for (const w of wrapTextWithAnsi(theme.fg("muted", a.description), Math.max(1, width - 8))) add(`        ${w}`);
 				}
 			}

@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Container, Text } from "@earendil-works/pi-tui";
+import { appendDebuggerNudge, isSveltePath, isTestOrBuildCommand, svelteBackstopReason, toolInputPath } from "./backstops.ts";
 import { discoverAgents } from "./agents.ts";
 import { ArmedChain, routeArmedChain } from "./chain-arm.ts";
 import { openDashboard } from "./dashboard.ts";
@@ -65,6 +66,20 @@ export default function (pi: ExtensionAPI) {
 
 	registerSubagentTool(pi, deps);
 
+	pi.on("tool_call", async (event) => {
+		if (event.toolName !== "edit" && event.toolName !== "write") return;
+		const filePath = toolInputPath(event.input as Record<string, unknown>);
+		if (!isSveltePath(filePath)) return;
+		return { block: true, reason: svelteBackstopReason(filePath) };
+	});
+
+	pi.on("tool_result", async (event) => {
+		if (event.toolName !== "bash" || !event.isError) return;
+		const command = String(event.input.command ?? "");
+		if (!isTestOrBuildCommand(command)) return;
+		return { content: appendDebuggerNudge(event.content, command) };
+	});
+
 	const killAll = (ctx: ExtensionContext): void => {
 		let n = 0;
 		for (const r of registry.running()) {
@@ -75,11 +90,12 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	// Auto-spawn: advertise agents to the main model each turn so it delegates proactively.
-	// Default (advertiseAll) = every discovered agent; otherwise only toggled-active ones.
+	// Default (advertiseAll) = every discovered agent in its policy tier; otherwise
+	// hard-trigger agents plus toggled-active judgment/explicit agents.
 	pi.on("before_agent_start", (event, ctx) => {
 		holder.ctx = ctx;
 		const { agents } = discoverAgents(ctx.cwd, { includeProject: ctx.isProjectTrusted?.() ?? false });
-		const advertised = state.getAdvertiseAll() ? agents : agents.filter((a) => state.isActive(a.name));
+		const advertised = state.getAdvertiseAll() ? agents : agents.filter((a) => a.advertise === "always" || state.isActive(a.name));
 		const block = buildActiveAgentsBlock(advertised);
 		return block ? { systemPrompt: `${event.systemPrompt}\n${block}` } : {};
 	});
@@ -125,7 +141,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("_spawntest", {
-		description: "Functional test for agent spawn: creates temp agents, runs a spawn chain, shows output/cost, cleans up.",
+		description: "Functional test for agent spawn: creates temp agents, runs a spawn sequence, shows output/cost, cleans up.",
 		handler: async (_args, ctx) => {
 			holder.ctx = ctx;
 			const dir = path.join(getAgentDir(), "agents");
@@ -238,10 +254,27 @@ ${text || "(no output)"}`);
 		}
 	}
 
+	// Show cumulative subagent cost as a footer segment next to pi's own $ figure.
+	// (pi's built-in $ tracks only the main session; there's no API to add into it,
+	// so we surface subagent spend as its own status-bar segment.)
+	let costStatusWired = false;
+	const updateCostStatus = () => {
+		const ui = holder.ctx?.ui;
+		if (!ui?.setStatus) return;
+		const total = registry.totalCost();
+		ui.setStatus("subagent-cost", total > 0 ? `⊕ $${total.toFixed(4)} subagents` : undefined);
+	};
+
 	pi.on("session_start", (_e, ctx) => {
 		holder.ctx = ctx;
 		if (!ctx.hasUI) return;
 		// No status-bar widget: live progress lives in the tool result and the /name working line.
+		// The footer carries a cumulative subagent-cost segment, refreshed on every run change.
+		if (!costStatusWired) {
+			costStatusWired = true;
+			registry.onChange(updateCostStatus);
+		}
+		updateCostStatus();
 		registerAgentCommands(ctx);
 	});
 }

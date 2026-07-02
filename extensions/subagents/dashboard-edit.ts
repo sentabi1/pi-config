@@ -9,12 +9,16 @@ import { pickTools } from "./pickers.ts";
 import type { SubagentState } from "./state.ts";
 
 const THINKING = ["", "minimal", "low", "medium", "high", "xhigh"];
-const FIELDS = ["name", "model", "thinking", "readonly", "color", "tools", "description", "systemPrompt"] as const;
+const TIERS = ["", "fast", "strong"];
+const ADVERTISE = ["always", "judgment", "never"];
+const FIELDS = ["name", "model", "tier", "advertise", "thinking", "readonly", "color", "tools", "description", "systemPrompt"] as const;
 type FieldKey = (typeof FIELDS)[number];
 
 interface Draft {
 	name: string;
 	model: string;
+	tier: string;
+	advertise: AgentConfig["advertise"];
 	thinking: string;
 	readonly: boolean;
 	color: string;
@@ -33,6 +37,8 @@ function showEditorOverlay(ctx: ExtensionContext, agentName: string, draft: Draf
 	const LABELS: Record<FieldKey, string> = {
 		name: "Name",
 		model: "Model",
+		tier: "Tier",
+		advertise: "Advertise",
 		thinking: "Thinking",
 		readonly: "Read-only",
 		color: "Color",
@@ -55,6 +61,12 @@ function showEditorOverlay(ctx: ExtensionContext, agentName: string, draft: Draf
 				const opts = ["", ...models];
 				const i = opts.indexOf(draft.model);
 				draft.model = opts[(i + dir + opts.length) % opts.length];
+			} else if (field === "tier") {
+				const i = TIERS.indexOf(draft.tier);
+				draft.tier = TIERS[(i + dir + TIERS.length) % TIERS.length];
+			} else if (field === "advertise") {
+				const i = ADVERTISE.indexOf(draft.advertise);
+				draft.advertise = ADVERTISE[(i + dir + ADVERTISE.length) % ADVERTISE.length] as AgentConfig["advertise"];
 			} else if (field === "thinking") {
 				const i = THINKING.indexOf(draft.thinking);
 				draft.thinking = THINKING[(i + dir + THINKING.length) % THINKING.length];
@@ -126,6 +138,8 @@ function showEditorOverlay(ctx: ExtensionContext, agentName: string, draft: Draf
 				let val = "";
 				if (f === "name") val = draft.name ? theme.fg("text", draft.name) : theme.fg("warning", "(unnamed)");
 				else if (f === "model") val = draft.model || theme.fg("dim", "(inherit parent)");
+				else if (f === "tier") val = draft.tier || theme.fg("dim", "(none)");
+				else if (f === "advertise") val = draft.advertise;
 				else if (f === "thinking") val = draft.thinking || theme.fg("dim", "(inherit)");
 				else if (f === "readonly") val = draft.readonly ? theme.fg("success", "yes") : theme.fg("dim", "no");
 				else if (f === "color") val = `${colorize(draft.color, "●")} ${draft.color}`;
@@ -156,6 +170,8 @@ export async function openEditor(ctx: ExtensionContext, agent: AgentConfig, stat
 	const draft: Draft = {
 		name: agent.name,
 		model: agent.model ?? "",
+		tier: agent.tier ?? "",
+		advertise: agent.advertise,
 		thinking: agent.thinking ?? "",
 		readonly: agent.readonly,
 		color: agent.color,
@@ -174,6 +190,8 @@ export async function openEditor(ctx: ExtensionContext, agent: AgentConfig, stat
 				...agent,
 				name: newName,
 				model: r.draft.model || undefined,
+				tier: r.draft.tier === "fast" || r.draft.tier === "strong" ? r.draft.tier : undefined,
+				advertise: r.draft.advertise,
 				thinking: r.draft.thinking || undefined,
 				readonly: r.draft.readonly,
 				color: r.draft.color,

@@ -24,6 +24,7 @@ export class RunRegistry {
 	private nextId = 1;
 
 	create(opts: { agent: AgentConfig; task: string; mode: "single" | "parallel" | "chain"; chainStep?: number }): RunRecord {
+		if (process.env.SUBAGENT_ROUTING_EVAL === "1") console.error(`SUBAGENT_EVAL_SPAWN ${opts.agent.name}`);
 		const rec: RunRecord = {
 			id: this.nextId++,
 			agentName: opts.agent.name,
@@ -90,6 +91,12 @@ export class RunRegistry {
 
 	hasActive(): boolean {
 		return this.running().length > 0;
+	}
+
+	/** Cumulative cost of every subagent run this session (top-level dispatched/tool runs;
+	 * nested spawns are summed inside the tool result, not here). */
+	totalCost(): number {
+		return this.records.reduce((sum, r) => sum + (r.usage?.cost ?? 0), 0);
 	}
 
 	onChange(cb: () => void): () => void {

@@ -1,0 +1,149 @@
+{
+  "generatedAt": "2026-06-30T20:04:31.829Z",
+  "command": "pi -p -e index.ts --no-extensions --no-session <prompt>",
+  "results": [
+    {
+      "id": "known-file-no-scout",
+      "pass": true,
+      "missing": [],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 0,
+      "durationMs": 8444,
+      "notes": "Familiarity tripwire: if the file is named, recon should stay inline."
+    },
+    {
+      "id": "obvious-symbol-no-scout",
+      "pass": true,
+      "missing": [],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 0,
+      "durationMs": 30771,
+      "notes": "Over-delegation guard for a simple grep-scale lookup."
+    },
+    {
+      "id": "broad-flow-scout",
+      "pass": false,
+      "missing": [
+        "scout"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 0,
+      "durationMs": 68065,
+      "notes": "Breadth tripwire: cross-file unfamiliar tracing should delegate recon."
+    },
+    {
+      "id": "broad-state-scout",
+      "pass": false,
+      "missing": [
+        "scout"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 0,
+      "durationMs": 128607,
+      "notes": "Breadth tripwire for many-file state reconnaissance."
+    },
+    {
+      "id": "svelte-edit-hard-trigger",
+      "pass": false,
+      "missing": [
+        "svelte-worker"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 0,
+      "durationMs": 142119,
+      "notes": "Capability trigger: Svelte file signal should fire regardless of size."
+    },
+    {
+      "id": "svelte-rune-hard-trigger",
+      "pass": false,
+      "missing": [
+        "svelte-worker"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 0,
+      "durationMs": 108434,
+      "notes": "Capability trigger for .svelte.ts modules."
+    },
+    {
+      "id": "known-failure-debugger",
+      "pass": false,
+      "missing": [
+        "debugger"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 143,
+      "durationMs": 180041,
+      "notes": "Discipline event: known failing symptom belongs to debugger, not reviewer."
+    },
+    {
+      "id": "review-before-commit",
+      "pass": false,
+      "missing": [
+        "reviewer"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 143,
+      "durationMs": 180023,
+      "notes": "Discipline event: clean diff vetting belongs to reviewer."
+    },
+    {
+      "id": "trivial-diff-inline-review",
+      "pass": true,
+      "missing": [],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 0,
+      "durationMs": 36909,
+      "notes": "Review tripwire: trivial diffs should be reviewed inline."
+    },
+    {
+      "id": "tests-primary-deliverable",
+      "pass": false,
+      "missing": [
+        "test-writer"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 143,
+      "durationMs": 180022,
+      "notes": "Deliberate test-writing task."
+    },
+    {
+      "id": "planning-artifact-only",
+      "pass": false,
+      "missing": [
+        "planner"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 143,
+      "durationMs": 180023,
+      "notes": "Planner is allowed when the plan artifact is the deliverable."
+    },
+    {
+      "id": "implementation-worker",
+      "pass": false,
+      "missing": [
+        "worker"
+      ],
+      "forbidden": [],
+      "spawned": [],
+      "exitCode": 143,
+      "durationMs": 180025,
+      "notes": "Implementation after a plan belongs to worker, not planner."
+    }
+  ],
+  "summary": {
+    "total": 12,
+    "passed": 3,
+    "failed": 9
+  }
+}

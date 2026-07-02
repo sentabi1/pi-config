@@ -92,7 +92,7 @@ The main model calls this to delegate. Three modes:
 
 - **Single** — `{ agent, task }`
 - **Parallel** — `{ tasks: [{agent, task}, …] }` (concurrent, up to 6)
-- **Chain** — `{ chain: [{agent, task}, …] }` — sequential; use `{previous}` in a task to substitute the prior step's output
+- **Sequence** — `{ chain: [{agent, task}, …] }` — sequential; use `{previous}` in a task to substitute the prior step's output
 
 The tool result block shows **live per-agent rows** — status icon, `mm:ss` elapsed (ticking every second), tool count, `↑input ↓output`, `$cost`, `% context`, and the task it was given (`▸ …`) — plus a `$… total` in the header and any spawned children indented beneath (`↳`). It updates as they run and scrolls normally with your transcript. Collapsed by default; `ctrl+o` expands the full output.
 

@@ -95,7 +95,11 @@ export function keyLabel(keyId: string): string {
 
 /** Reads keybind overrides from SubagentState (defaults when unset) and matches input. */
 export class Keymap {
-	constructor(private state: SubagentState) {}
+	private state: SubagentState;
+
+	constructor(state: SubagentState) {
+		this.state = state;
+	}
 	key(action: Action): string {
 		return this.state.getKeybinds()[action] ?? DEFAULT_KEYS[action];
 	}

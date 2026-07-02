@@ -128,6 +128,16 @@ export function resolveModel(registry: ModelRegistry, pattern: string | undefine
 	return all.find((m: any) => `${m.provider}/${m.id}`.includes(pattern) || m.id.includes(pattern));
 }
 
+function tierPattern(tier: AgentConfig["tier"]): string | undefined {
+	if (tier === "fast") return process.env.SUBAGENT_MODEL_TIER_FAST;
+	if (tier === "strong") return process.env.SUBAGENT_MODEL_TIER_STRONG;
+	return undefined;
+}
+
+export function resolveAgentModel(registry: ModelRegistry, agent: AgentConfig, parentModel: Model<any> | undefined): Model<any> | undefined {
+	return resolveModel(registry, agent.model) ?? resolveModel(registry, tierPattern(agent.tier)) ?? parentModel;
+}
+
 function argsPreview(name: string, args: any): string {
 	try {
 		if (name === "bash") return `$ ${String(args?.command ?? "").slice(0, 60)}`;
@@ -158,7 +168,7 @@ export async function runAgent(args: {
 	onEvent: (e: RunEvent) => void;
 }): Promise<RunHandle> {
 	const { agent, registry, cwd, onEvent } = args;
-	const model = resolveModel(registry, agent.model) ?? args.parentModel;
+	const model = resolveAgentModel(registry, agent, args.parentModel);
 
 	// Fast-fail guards: never hang on an already-aborted run or a missing model.
 	if (args.signal?.aborted) {
@@ -168,7 +178,7 @@ export async function runAgent(args: {
 		};
 	}
 	if (!model) {
-		const err = `No model available for agent "${agent.name}" (pattern: ${agent.model ?? "inherit"})`;
+		const err = `No model available for agent "${agent.name}" (pattern: ${agent.model ?? agent.tier ?? "inherit"})`;
 		onEvent({ type: "status", status: "error" });
 		return {
 			promise: Promise.resolve({ ok: false, finalText: "", usage: emptyUsage(), contextPercent: null, error: err }),

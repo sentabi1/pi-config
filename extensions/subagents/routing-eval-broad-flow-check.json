@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-06-30T21:27:19.761Z",
+  "command": "pi -p -e index.ts --no-extensions --no-session <prompt>",
+  "results": [
+    {
+      "id": "broad-flow-scout",
+      "pass": true,
+      "missing": [],
+      "forbidden": [],
+      "spawned": [
+        "scout"
+      ],
+      "exitCode": 143,
+      "durationMs": 180013,
+      "notes": "Breadth tripwire: cross-file unfamiliar tracing should delegate recon."
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-06-30T21:00:00.892Z",
+  "command": "pi -p -e index.ts --no-extensions --no-session <prompt>",
+  "results": [
+    {
+      "id": "implementation-worker",
+      "pass": true,
+      "missing": [],
+      "forbidden": [],
+      "spawned": [
+        "worker",
+        "reviewer"
+      ],
+      "exitCode": 143,
+      "durationMs": 180009,
+      "notes": "Implementation after a plan belongs to worker, not planner."
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0
+  }
+}
